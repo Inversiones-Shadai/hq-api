@@ -33,6 +33,8 @@ Route::prefix('headquarters')->middleware(['throttle:headquarters-access', Headq
     Route::post('pos/productos/lotes-hijos/{action}', [PosProductLotController::class, 'handle'])
         ->whereIn('action', ['preparar', 'consultar']);
     Route::post('pos/inventario/control/guardar', [InventoryControlController::class, 'handle']);
+    Route::post('pos/inventario/matriz/sucursales', [InventoryMatrixController::class, 'branches']);
+    Route::post('pos/ventas-perdidas', [InventoryMatrixController::class, 'lostSales']);
     Route::post('pos/inventario/matriz/guardar', [InventoryMatrixController::class, 'handle']);
     Route::post('pos/compras/{action}', [PosPurchaseController::class, 'handle'])
         ->whereIn('action', ['recibir', 'consultar', 'cancelar']);

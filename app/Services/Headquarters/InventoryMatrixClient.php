@@ -17,11 +17,17 @@ class InventoryMatrixClient
         $base = rtrim((string) config('headquarters.apishadai_url'), '/');
         $secret = (string) config('headquarters.apishadai_secret');
         $local = in_array(parse_url($base, PHP_URL_HOST), ['127.0.0.1', 'localhost', '::1'], true);
-        if (strlen($secret) < 64 || ! $base || ! in_array($action, ['guardar'], true)
+        $path = match ($action) {
+            'guardar', 'sucursales' => 'inventario/matriz/'.$action,
+            'ventas-perdidas' => 'ventas-perdidas',
+            default => null,
+        };
+        $operation = $action === 'ventas-perdidas' ? 'ventas perdidas' : 'matriz de inventario';
+        if (strlen($secret) < 64 || ! $base || $path === null
             || (parse_url($base, PHP_URL_SCHEME) !== 'https' && ! ($local && app()->environment(['local', 'testing'])))) {
-            throw new HeadquartersException('Configura el canal seguro de matriz de inventario con la API central.', 503);
+            throw new HeadquartersException("Configura el canal seguro de {$operation} con la API central.", 503);
         }
-        $url = $base.'/headquarters/pos/inventario/matriz/'.$action;
+        $url = $base.'/headquarters/pos/'.$path;
         $body = json_encode($data, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         $timestamp = (string) now()->timestamp;
         $nonce = (string) Str::uuid();
@@ -32,10 +38,10 @@ class InventoryMatrixClient
                 'X-HQ-Nonce' => $nonce, 'X-HQ-Signature' => hash_hmac('sha256', $canonical, $secret),
             ])->withBody($body, 'application/json')->post($url);
         } catch (ConnectionException $exception) {
-            throw new HeadquartersException('No se pudo comunicar el registro de matriz de inventario con la API central. Conserva la solicitud original.', 503);
+            throw new HeadquartersException("No se pudo comunicar el registro de {$operation} con la API central. Conserva la solicitud original.", 503);
         }
         if (! $response->successful()) {
-            throw new HeadquartersException('La API central no confirmó el registro de matriz de inventario. Conserva la identidad y el contenido originales.', $response->status() >= 500 ? 503 : $response->status());
+            throw new HeadquartersException("La API central no confirmó el registro de {$operation}. Conserva la identidad y el contenido originales.", $response->status() >= 500 ? 503 : $response->status());
         }
         $result = $response->json('data');
         if (! is_array($result)) {

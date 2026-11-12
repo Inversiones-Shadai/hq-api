@@ -66,6 +66,36 @@ class InventoryMatrixProxyTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    public function test_branch_exchange_preserves_the_signed_binding_and_does_not_accept_a_replacement(): void
+    {
+        $headers = $this->client();
+        $payload = ['stock_id' => '2', 'balance_after' => '11', 'alert_after' => '7', 'upload' => null];
+        $path = '/api/headquarters/pos/inventario/matriz/sucursales';
+        Http::fake(['https://central.example.test'.$path => Http::response(['data' => ['stock_id' => 2]], 200)]);
+        $this->withHeaders($headers)->postJson($path, ['payload' => $payload, 'device_id' => 99])->assertUnprocessable();
+        $this->postJson($path, ['payload' => $payload])->assertOk()->assertJsonPath('data.stock_id', 2);
+        Http::assertSentCount(1);
+        Http::assertSent(fn ($request): bool => $request['device_id'] === 7 && $request['payload'] === $payload && $request->hasHeader('X-HQ-Signature'));
+    }
+
+    public function test_lost_sales_are_forwarded_with_the_registered_stock_and_an_hmac_signature(): void
+    {
+        $path = '/api/headquarters/pos/ventas-perdidas';
+        $requestId = '20000000-0000-4000-8000-000000000001';
+        $rows = [['request_id' => $requestId, 'producto_id' => '8', 'usuario_pos_id' => '12', 'reported_at' => '2026-11-11T19:00:00Z']];
+        $payload = ['stock_id' => '2', 'rows' => $rows];
+        $result = ['stock_id' => '2', 'results' => [['request_id' => $requestId, 'accepted' => true]]];
+        Http::fake(['https://central.example.test'.$path => Http::response(['data' => $result])]);
+
+        $this->postJson($path, ['payload' => $payload])->assertUnauthorized();
+        $headers = $this->client();
+        $this->withHeaders($headers)->postJson($path, ['payload' => ['stock_id' => '3', 'rows' => $rows]])->assertForbidden();
+        $this->postJson($path, ['payload' => $payload, 'device_id' => 99])->assertUnprocessable();
+        $this->postJson($path, ['payload' => $payload])->assertOk()->assertJsonPath('data', $result);
+        Http::assertSentCount(1);
+        Http::assertSent(fn ($request): bool => $request['device_id'] === 7 && $request['payload'] === $payload && $request->hasHeader('X-HQ-Signature'));
+    }
+
     public function test_matrix_requires_headquarters_authentication(): void
     {
         $this->postJson('/api/headquarters/pos/inventario/matriz/guardar', ['payload' => []])->assertUnauthorized();
